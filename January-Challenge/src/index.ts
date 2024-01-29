@@ -1,3 +1,3 @@
-import { Add } from './Add.js';
+import { Message } from './Message.js';
 
-export { Add };
+export { Message };
