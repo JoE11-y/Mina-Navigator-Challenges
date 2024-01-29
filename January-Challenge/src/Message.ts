@@ -44,6 +44,14 @@ export class Message extends SmartContract {
     super.init();
   }
 
+  @method setZkdbCommitment(storageRoot: Field) {
+    // check if contract has been locked or fail
+    this.initiated.requireEquals(Bool(false));
+    this.storageRoot.set(storageRoot);
+    // lock the contract
+    this.initiated.set(Bool(true));
+  }
+
   @method addAddress(addressRecord: AddressRecord, witness: MessageMerkleWitness){
     // Get the storageRoot and verify
     let storageRoot = this.storageRoot.getAndRequireEquals();
