@@ -44,7 +44,7 @@ export class Message extends SmartContract {
     super.init();
   }
 
-  @method setZkdbCommitment(storageRoot: Field) {
+  @method setZkdbRoot(storageRoot: Field) {
     // check if contract has been locked or fail
     this.initiated.requireEquals(Bool(false));
     this.storageRoot.set(storageRoot);
