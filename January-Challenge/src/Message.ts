@@ -1,4 +1,4 @@
-import { Field, SmartContract, state, State, method, MerkleWitness, Bool, PublicKey, Provable } from 'o1js';
+import { Field, SmartContract, state, State, method, MerkleWitness, Bool, PublicKey, Provable, UInt32 } from 'o1js';
 
 import { Schema } from 'zkdb';
 
@@ -39,6 +39,11 @@ export class Message extends SmartContract {
   @state(Bool) initiated = State<Bool>();
   @state(Field) storageRoot = State<Field>();
   @state(Field) numOfAddresses = State<Field>();
+  @state(Field) numOfMessages = State<Field>();
+
+  events = {
+    "new-message": UInt32
+  }
 
   init() {
     super.init();
@@ -48,12 +53,17 @@ export class Message extends SmartContract {
     // check if contract has been locked or fail
     this.initiated.requireEquals(Bool(false));
     this.storageRoot.set(storageRoot);
+    this.numOfAddresses.set(Field(0));
+    this.numOfMessages.set(Field(0))
     // lock the contract
     this.initiated.set(Bool(true));
   }
 
   @method addAddress(addressRecord: AddressRecord, witness: MessageMerkleWitness){
-    // Get the storageRoot and verify
+    // check if contract has been initiated
+    this.initiated.requireEquals(Bool(true));
+    
+    // get the storageRoot and verify
     let storageRoot = this.storageRoot.getAndRequireEquals();
 
     // Get the number of addresses and verify
@@ -74,7 +84,10 @@ export class Message extends SmartContract {
   }
 
   @method depositMessage(message: Field, addressRecord: AddressRecord, witness: MessageMerkleWitness){
-    // Get the storageRoot and verify
+    // check if contract has been initiated
+    this.initiated.requireEquals(Bool(true));
+
+    // get the storageRoot and verify
     let addressRoot = this.storageRoot.getAndRequireEquals();
 
     // check that txn sender is the address in addressRecord
@@ -89,17 +102,26 @@ export class Message extends SmartContract {
     // check for message flags here
     this.checkFlags(message);
 
+    // Get the number of messages and verify
+    let numOfMessages = this.numOfMessages.getAndRequireEquals();
+
     // create new record
     let updatedAddressRecord = new AddressRecord({
         address: addressRecord.address,
         message: message
     })
 
-    // update storageRoot with message
+    // calculate new root with updated record
     let updatedRoot = witness.calculateRoot(
         updatedAddressRecord.hash()
     )
+
+    // update storage root and increment number of messages
     this.storageRoot.set(updatedRoot);
+    this.numOfMessages.set(numOfMessages.add(1));
+
+    // emit new message event
+    this.emitEvent('new-message', numOfMessages.add(1));
 
     // return the addressrecord
     return updatedAddressRecord;
