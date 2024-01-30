@@ -1,4 +1,4 @@
-import { Field, SmartContract, state, State, method, MerkleWitness, Bool, PublicKey } from 'o1js';
+import { Field, SmartContract, state, State, method, MerkleWitness, Bool, PublicKey, Provable } from 'o1js';
 
 import { Schema } from 'zkdb';
 
@@ -83,18 +83,69 @@ export class Message extends SmartContract {
     // check if accountRecord is an eligible address
     witness.calculateRoot(addressRecord.hash()).assertEquals(addressRoot);
 
-    // todo 
-    // verify that message is of the allowed format
+    // check that the message is Field 0 i.e address has not deposited a message
+    Field(0).assertEquals(addressRecord.message);
+
     // check for message flags here
+    this.checkFlags(message);
 
-    // update storageRoot with message and increment message number
+    // create new record
+    let updatedAddressRecord = new AddressRecord({
+        address: addressRecord.address,
+        message: message
+    })
+
+    // update storageRoot with message
     let updatedRoot = witness.calculateRoot(
-        new AddressRecord({
-            address: addressRecord.address,
-            message: message
-        }).hash()
+        updatedAddressRecord.hash()
     )
-
     this.storageRoot.set(updatedRoot);
+
+    // return the addressrecord
+    return updatedAddressRecord;
+  }
+
+  checkFlags(message: Field) {
+   // get last 6 bits of the messages
+   let messageBits = message.toBits();
+
+   // access the last 6 bits
+   let flag1 = messageBits[249];
+   let flag2 = messageBits[250];
+   let flag3 = messageBits[251];
+   let flag4 = messageBits[252];
+   let flag5 = messageBits[253];
+   let flag6 = messageBits[254];
+
+   // define conditions
+
+   // If flag 1 is true, then all other flags must be false
+   let condition1 = Provable.if(
+        flag1, // if flag1 is true
+        flag2.not() // ensure other flags are false
+            .and(flag3.not())
+            .and(flag4.not())
+            .and(flag5.not())
+            .and(flag6.not()), 
+        Bool(true) // else condition is invalidated
+    );
+    
+    // If flag 2 is true, then flag 3 must also be true
+   let condition2 = Provable.if(
+        flag2, // if flag2 is true
+        flag3, // then flag3 must be true
+        Bool(true) // else condition is invalidated
+    );
+    
+    // If flag 4 is true, then flags 5 and 6 must be false
+   let condition3 = Provable.if(
+        flag4, // if flag2 is true
+        flag5.not() // then flag5 and flag6 must be true
+            .and(flag6.not()), 
+        Bool(true) // else condition is invalidated
+    );
+
+    // check that it passes all the conditions
+    condition1.and(condition2).and(condition3).assertTrue("Message does not follow the required format")
   }
 }
