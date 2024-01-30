@@ -3,7 +3,7 @@ import { Field, SmartContract, state, State, method, MerkleWitness, Bool, Public
 import { Schema } from 'zkdb';
 
 // Height of the Merkle Tree
-const merkleHeight = 10;
+export const merkleHeight = 10;
 
 // Extend Merkle witness at the same height as the Merkle Tree
 export class MessageMerkleWitness extends MerkleWitness(merkleHeight) {}
@@ -12,7 +12,6 @@ export class AddressRecord extends Schema({
     address: PublicKey,
     message: Field,
 }){
-
 // Deserialize the document from a Uint8Array
   static deserialize(data: Uint8Array): AddressRecord {
     return new AddressRecord(AddressRecord.decode(data));
@@ -122,9 +121,6 @@ export class Message extends SmartContract {
 
     // emit new message event
     this.emitEvent('new-message', numOfMessages.add(1));
-
-    // return the addressrecord
-    return updatedAddressRecord;
   }
 
   checkFlags(message: Field) {
