@@ -39,6 +39,8 @@
     "o1js": "0.15.*"
   },
   "dependencies": {
+    "@types/node": "^20.11.13",
+    "fs": "^0.0.1-security",
     "zkdb": "^1.1.1"
   }
 }

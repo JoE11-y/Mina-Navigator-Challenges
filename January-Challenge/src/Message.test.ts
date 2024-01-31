@@ -1,10 +1,12 @@
 import { Message, MessageMerkleWitness, merkleHeight, AddressRecord } from './Message';
 import { Field, Mina, PrivateKey, PublicKey, AccountUpdate, Bool } from 'o1js';
 import { ZKDatabaseStorage } from 'zkdb';
+import * as fs from 'fs';
 
 let proofsEnabled = false;
 
-describe('Secret Message', () => {
+// delete the data folder before running the test again.
+describe('Secret Message Test', () => {
   let deployerAccount: PublicKey,
     deployerKey: PrivateKey,
     zkAppAddress: PublicKey,
@@ -12,12 +14,16 @@ describe('Secret Message', () => {
     zkApp: Message,
     zkdb: ZKDatabaseStorage;
 
-  const eligibleAddresses = new Array(5)
-    .fill(null)
-    .map(() => PrivateKey.random());
-
   const Local = Mina.LocalBlockchain({ proofsEnabled });
   Mina.setActiveInstance(Local);
+
+  const dbLocation = './database';
+
+  async function cleanup(){
+    if(fs.existsSync(dbLocation)){
+      fs.rmSync(dbLocation, { recursive: true, force: true });
+    }
+  }
 
   async function localDeploy() {
     ({ privateKey: deployerKey, publicKey: deployerAccount } =
@@ -28,11 +34,12 @@ describe('Secret Message', () => {
     zkApp = new Message(zkAppAddress);
 
     // initialize the zkdb storage
+    await cleanup();
     zkdb = await ZKDatabaseStorage.getInstance('storage', {
       storageEngine: 'local',
       merkleHeight,
       storageEngineCfg: {
-          location: './data',
+          location: dbLocation,
       },
     });
 
@@ -49,30 +56,38 @@ describe('Secret Message', () => {
     await txn.sign([deployerKey, zkAppPrivateKey]).send();
   }
 
+  // function generateMessage() {
+  //   let message = Field.random();
+  //   while (message > )
+  // }
+
+
   beforeAll(async () => {
     if (proofsEnabled) await Message.compile();
     await localDeploy();
   });
 
-  it('successfully adds eligible addresses', async () => {
-    for (let i = 0; i < eligibleAddresses.length; i++) {
+  it('should allow addition of eligible addresses', async () => {
+    for (let i = 0; i < 5 ; i++) {
+      const eligibleAddress = Local.testAccounts[i].publicKey;
+
       // first get current number of address added
       const numOfAddresses = zkApp.numOfAddresses.get();
 
       // get the witness for that index from the zkdb storage
       const witness = new MessageMerkleWitness(
         await zkdb.getWitnessByIndex(
-          BigInt(numOfAddresses.toString())
+          numOfAddresses.toBigInt()
         )
       );
 
       // create an address record with an empty message 'Field(0)'
       const addressRecord = new AddressRecord({
-        address: eligibleAddresses[i].toPublicKey(),
+        address: eligibleAddress,
         message: Field(0)
       })
 
-      // update transaction
+      // create transaction
       const txn = await Mina.transaction(deployerAccount, () => {
         zkApp.addAddress(addressRecord, witness);
       });
@@ -82,24 +97,21 @@ describe('Secret Message', () => {
 
       if (txnResult.isSuccess) {
         // update and add token to record.
-        zkdb.add(addressRecord)
+        await zkdb.add(addressRecord)
       }
     }
-
     const updatedAddressCount = zkApp.numOfAddresses.get();
     expect(updatedAddressCount).toEqual(Field(5));
   }) 
   
-  
-  it('eligible address can add message', async () => {
-
+  it('should allow eligible address to add message', async () => {
     // get eligible address
-    const eligibleAddress1Key = eligibleAddresses[0];
-    const eligibleAddress1Account = eligibleAddress1Key.toPublicKey()
+    const eligibleAddressKey = Local.testAccounts[1].privateKey;
+    const eligibleAddressAccount =  Local.testAccounts[1].publicKey;
 
     // fetch addressRecord from zkdatabase
     // the key was set to be the base58 format of the public key
-    const findRecord = zkdb.findOne('address', eligibleAddress1Account.toBase58());
+    const findRecord = zkdb.findOne('address', eligibleAddressAccount.toBase58());
 
     if (findRecord.isEmpty()) {
       throw new Error('User does not exist on DB');
@@ -124,26 +136,25 @@ describe('Secret Message', () => {
     // load message from bits again
     const message = Field.fromBits(messageBits);
     
-    let txn = await Mina.transaction(eligibleAddress1Account, () => {
+    let txn = await Mina.transaction(eligibleAddressAccount, () => {
       zkApp.depositMessage(message, addressRecord, witness);
     })
 
     await txn.prove();
-    const txnResult = await txn.sign([eligibleAddress1Key]).send();
+    const txnResult = await txn.sign([eligibleAddressKey]).send();
 
     if (txnResult.isSuccess) {
       // update record in zkdb.
-      zkdb.add(new AddressRecord({
+      await zkdb.updateByIndex(findRecord.index, new AddressRecord({
         address: addressRecord.address,
         message: message
       }))
     }
   })
 
-  it('eligible address cannot add more than one message', async () => {
-    // get eligible address
-    const eligibleAddressKey = eligibleAddresses[0];
-    const eligibleAddressAccount = eligibleAddressKey.toPublicKey()
+  it('should fail when eligible address tries to add more than one message', async () => {
+   // get eligible address
+   const eligibleAddressAccount =  Local.testAccounts[1].publicKey;
 
     // fetch addressRecord from zkdatabase
     // the key was set to be the base58 format of the public key
@@ -172,26 +183,14 @@ describe('Secret Message', () => {
     // load message from bits again
     const message = Field.fromBits(messageBits);
     
-    let txn = await Mina.transaction(eligibleAddressAccount, () => {
+    await expect(Mina.transaction(eligibleAddressAccount, () => {
       zkApp.depositMessage(message, addressRecord, witness);
-    })
-
-    await txn.prove();
-    const txnResult = await txn.sign([eligibleAddressKey]).send();
-
-    if (txnResult.isSuccess) {
-      // update record in zkdb.
-      zkdb.add(new AddressRecord({
-        address: addressRecord.address,
-        message: message
-      }))
-    }
+    })).rejects.toThrow();
   })
 
-  it('message with invalid flag fails', async () => {
+  it('should fail if message with invalid flag is added', async () => {
     // get eligible address
-    const eligibleAddressKey = eligibleAddresses[2];
-    const eligibleAddressAccount = eligibleAddressKey.toPublicKey()
+    const eligibleAddressAccount =  Local.testAccounts[2].publicKey;
 
     // fetch addressRecord from zkdatabase
     // the key was set to be the base58 format of the public key
@@ -206,37 +205,26 @@ describe('Secret Message', () => {
     const witness = new MessageMerkleWitness(await findRecord.witness());
 
     // generate random message
-    const messageBits = Field.random().toBits();
+    const messageBits = Field(10).toBits();
 
     // update last 6 bits of message to contain flag
     // in this example flag fails condition 1
     messageBits[249] = Bool(true);
     messageBits[250] = Bool(true);
-    messageBits[251] = Bool(true);
-    messageBits[252] = Bool(true);
-    messageBits[253] = Bool(true);
-    messageBits[254] = Bool(true);
+    messageBits[251] = Bool(false);
+    messageBits[252] = Bool(false);
+    messageBits[253] = Bool(false);
+    messageBits[254] = Bool(false);
 
     // load message from bits again
     const message = Field.fromBits(messageBits);
-    
-    let txn = await Mina.transaction(eligibleAddressAccount, () => {
+
+    await expect(Mina.transaction(eligibleAddressAccount, () => {
       zkApp.depositMessage(message, addressRecord, witness);
-    })
-
-    await txn.prove();
-    const txnResult = await txn.sign([eligibleAddressKey]).send();
-
-    if (txnResult.isSuccess) {
-      // update record in zkdb.
-      zkdb.add(new AddressRecord({
-        address: addressRecord.address,
-        message: message
-      }))
-    }
+    })).rejects.toThrow();
   })
 
-  it('ineligible address cannot add message', async () => {
+  it('should fail if ineligible address tries to add message', async () => {
     // get ineligible address
     const inEligibleAddressKey =  PrivateKey.random();
     const inEligibleAddressAccount = inEligibleAddressKey.toPublicKey()
@@ -267,7 +255,7 @@ describe('Secret Message', () => {
     })
     
     // generate random message
-    const messageBits = Field.random().toBits();
+    const messageBits = Field(10).toBits();
 
     // update last 6 bits of message to contain flag
     // in this example flag supports condition 2
@@ -276,24 +264,13 @@ describe('Secret Message', () => {
     messageBits[251] = Bool(true);
     messageBits[252] = Bool(false);
     messageBits[253] = Bool(false);
-    messageBits[254] = Bool(true);
+    messageBits[254] = Bool(false);
 
     // load message from bits again
     const message = Field.fromBits(messageBits);
     
-    let txn = await Mina.transaction(inEligibleAddressAccount, () => {
+    await expect(Mina.transaction(inEligibleAddressAccount, () => {
       zkApp.depositMessage(message, addressRecord, witness);
-    })
-
-    await txn.prove();
-    const txnResult = await txn.sign([inEligibleAddressKey]).send();
-
-    if (txnResult.isSuccess) {
-      // update and add token to record.
-      zkdb.add(new AddressRecord({
-        address: addressRecord.address,
-        message: message
-      }))
-    }
+    })).rejects.toThrow();
   })
 });

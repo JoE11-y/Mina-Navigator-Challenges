@@ -15,7 +15,7 @@ the address.
 Eligible addresses should be stored in a suitable data
 structure.
 
-2. A user with an eligible address can deposit a secret
+1. A user with an eligible address can deposit a secret
 message of a certain format.
 The message contains 6 flags at the end, each of size 1
 bit. The rest of the message can be any number.
@@ -24,14 +24,14 @@ function will have one parameter which is the message.
 The message should be a Field, we use the last 6 bits as
 flags.
 
-3. The flags should be checked according to the following
+1. The flags should be checked according to the following
 rules:
 
    - If flag 1 is true, then all other flags must be false
    - If flag 2 is true, then flag 3 must also be true.
    - If flag 4 is true, then flags 5 and 6 must be false.
 
-4. You should check that
+1. You should check that
 Addresses that are not eligible cannot deposit a
 message. An address can only deposit one message.
 
@@ -48,3 +48,13 @@ A smart contract with the following
 - A function to store eligible addresses
 - A function to check and store messages
 - Tests to test these functions
+
+## To Test
+
+1. Clone the repository to your local machine using: ``` git clone https://github.com/JoE11-y/Mina-Navigator-Challenges ```
+2. Move into January-Challenge folder ``` cd Mina-Navigator-Challenges/January-Challenge ```
+3. Install dependencies: ``` npm install ``` or ``` yarn install ```
+4. Build: ``` npm run build ```
+5. Run Test: ``` npm run test ```
+
+Note: Delete the created `database` folder after each test, to ensure a clean state of the database.

@@ -1,6 +1,9 @@
 import { Field, SmartContract, state, State, method, MerkleWitness, Bool, PublicKey, Provable, UInt32 } from 'o1js';
 
-import { Schema } from 'zkdb';
+// import { Schema } from 'zkdb';
+
+// Added a new schema serializer to fix issue with current zkdb serializer. PR already made
+import { Schema } from './serializer/schema.js';
 
 // Height of the Merkle Tree
 export const merkleHeight = 10;
@@ -18,9 +21,9 @@ export class AddressRecord extends Schema({
   }
   
   // Index the document by address
-  index(): { accountName: string } {
+  index(): { address: string } {
     return {
-        accountName: this.address.toBase58()
+        address: this.address.toBase58()
     }
   }
 
@@ -71,8 +74,10 @@ export class Message extends SmartContract {
     // Check that number of addresses is less than 100
     numOfAddresses.assertLessThanOrEqual(100);
 
-    // ensure that witness path is empty, i.e address has not been added before
-    witness.calculateRoot(Field(0)).assertEquals(storageRoot);
+    let emptyRoot = witness.calculateRoot(Field(0));
+
+    // ensure that witness path at index is empty, i.e address has not been added before
+    emptyRoot.assertEquals(storageRoot);
 
     // calculate root for new address addition
     const newRoot = witness.calculateRoot(addressRecord.hash());
@@ -120,7 +125,7 @@ export class Message extends SmartContract {
     this.numOfMessages.set(numOfMessages.add(1));
 
     // emit new message event
-    this.emitEvent('new-message', numOfMessages.add(1));
+    // this.emitEvent('new-message', numOfMessages.add(1));
   }
 
   checkFlags(message: Field) {
