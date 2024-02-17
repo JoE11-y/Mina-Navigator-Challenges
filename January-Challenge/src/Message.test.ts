@@ -7,8 +7,8 @@ let proofsEnabled = false;
 
 // delete the data folder before running the test again.
 describe('Secret Message Test', () => {
-  let deployerAccount: PublicKey,
-    deployerKey: PrivateKey,
+  let adminAccount: PublicKey,
+    adminKey: PrivateKey,
     zkAppAddress: PublicKey,
     zkAppPrivateKey: PrivateKey,
     zkApp: Message,
@@ -26,7 +26,7 @@ describe('Secret Message Test', () => {
   }
 
   async function localDeploy() {
-    ({ privateKey: deployerKey, publicKey: deployerAccount } =
+    ({ privateKey: adminKey, publicKey: adminAccount } =
       Local.testAccounts[0]);
     
     zkAppPrivateKey = PrivateKey.random();
@@ -45,15 +45,15 @@ describe('Secret Message Test', () => {
 
     // get storage root from zkdb instance
     const storageRoot = await zkdb.getMerkleRoot();
-    const txn = await Mina.transaction(deployerAccount, () => {
-      AccountUpdate.fundNewAccount(deployerAccount);
+    const txn = await Mina.transaction(adminAccount, () => {
+      AccountUpdate.fundNewAccount(adminAccount);
       zkApp.deploy();
       zkApp.setZkdbRoot(storageRoot);
     });
 
     await txn.prove();
     // this tx needs .sign(), because `deploy()` adds an account update that requires signature authorization
-    await txn.sign([deployerKey, zkAppPrivateKey]).send();
+    await txn.sign([adminKey, zkAppPrivateKey]).send();
   }
 
   // function generateMessage() {
@@ -61,13 +61,12 @@ describe('Secret Message Test', () => {
   //   while (message > )
   // }
 
-
   beforeAll(async () => {
     if (proofsEnabled) await Message.compile();
     await localDeploy();
   });
 
-  it('should allow addition of eligible addresses', async () => {
+  it('should should allow admin account to add eligible addresses', async () => {
     for (let i = 0; i < 5 ; i++) {
       const eligibleAddress = Local.testAccounts[i].publicKey;
 
@@ -88,12 +87,12 @@ describe('Secret Message Test', () => {
       })
 
       // create transaction
-      const txn = await Mina.transaction(deployerAccount, () => {
+      const txn = await Mina.transaction(adminAccount, () => {
         zkApp.addAddress(addressRecord, witness);
       });
 
       await txn.prove();
-      const txnResult = await txn.sign([deployerKey]).send();
+      const txnResult = await txn.sign([adminKey]).send();
 
       if (txnResult.isSuccess) {
         // update and add token to record.
@@ -102,7 +101,36 @@ describe('Secret Message Test', () => {
     }
     const updatedAddressCount = zkApp.numOfAddresses.get();
     expect(updatedAddressCount).toEqual(Field(5));
-  }) 
+  });
+
+  it('should fail if non admin tries to add eligible addresses', async () => {
+
+    const nonAdminAccount= Local.testAccounts[2].publicKey;
+    // const nonAdminKey = Local.testAccounts[2].privateKey;
+
+    const newAddressKey = PrivateKey.random();
+    const newAddressAccount = newAddressKey.toPublicKey();
+
+    // first get current number of address added
+    const numOfAddresses = zkApp.numOfAddresses.get();
+
+    // get the witness for that index from the zkdb storage
+    const witness = new MessageMerkleWitness(
+      await zkdb.getWitnessByIndex(
+        numOfAddresses.toBigInt()
+      )
+    );
+
+    // create an address record with an empty message 'Field(0)'
+     const addressRecord = new AddressRecord({
+      address: newAddressAccount,
+      message: Field(0)
+    })
+    
+    await expect(Mina.transaction(nonAdminAccount, () => { 
+      zkApp.addAddress(addressRecord, witness);
+    })).rejects.toThrow();
+  });
   
   it('should allow eligible address to add message', async () => {
     // get eligible address
@@ -151,6 +179,8 @@ describe('Secret Message Test', () => {
       }))
     }
   })
+
+  
 
   it('should fail when eligible address tries to add more than one message', async () => {
    // get eligible address

@@ -42,6 +42,7 @@ export class Message extends SmartContract {
   @state(Field) storageRoot = State<Field>();
   @state(Field) numOfAddresses = State<Field>();
   @state(Field) numOfMessages = State<Field>();
+  @state(PublicKey) admin = State<PublicKey>();
 
   events = {
     "new-message": UInt32
@@ -54,14 +55,23 @@ export class Message extends SmartContract {
   @method setZkdbRoot(storageRoot: Field) {
     // check if contract has been locked or fail
     this.initiated.requireEquals(Bool(false));
+
     this.storageRoot.set(storageRoot);
     this.numOfAddresses.set(Field(0));
-    this.numOfMessages.set(Field(0))
+    this.numOfMessages.set(Field(0));
+
+    // set admin
+    this.admin.set(this.sender);
+    
     // lock the contract
     this.initiated.set(Bool(true));
   }
 
   @method addAddress(addressRecord: AddressRecord, witness: MessageMerkleWitness){
+    // check if sender is admin;
+    const admin = this.admin.getAndRequireEquals();
+    admin.assertEquals(this.sender);
+
     // check if contract has been initiated
     this.initiated.requireEquals(Bool(true));
     
