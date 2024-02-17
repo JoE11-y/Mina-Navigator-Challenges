@@ -1,5 +1,5 @@
 import { Message, MessageMerkleWitness, merkleHeight, AddressRecord } from './Message';
-import { Field, Mina, PrivateKey, PublicKey, AccountUpdate, Bool } from 'o1js';
+import { Field, Mina, PrivateKey, PublicKey, AccountUpdate, Bool, UInt32 } from 'o1js';
 import { ZKDatabaseStorage } from 'zkdb';
 import * as fs from 'fs';
 
@@ -180,7 +180,65 @@ describe('Secret Message Test', () => {
     }
   })
 
-  
+  it ('should emit event', async () => {
+    // get eligible address
+    const eligibleAddressKey = Local.testAccounts[3].privateKey;
+    const eligibleAddressAccount =  Local.testAccounts[3].publicKey;
+
+    // fetch addressRecord from zkdatabase
+    // the key was set to be the base58 format of the public key
+    const findRecord = zkdb.findOne('address', eligibleAddressAccount.toBase58());
+
+    if (findRecord.isEmpty()) {
+      throw new Error('User does not exist on DB');
+    }
+
+    // load instance
+    const addressRecord = await findRecord.load(AddressRecord);
+    const witness = new MessageMerkleWitness(await findRecord.witness());
+
+    // generate random message
+    const messageBits = Field.random().toBits();
+
+    // update last 6 bits of message to contain flag
+    // in this example flag supports condition 1  
+    messageBits[249] = Bool(true);
+    messageBits[250] = Bool(false);
+    messageBits[251] = Bool(false);
+    messageBits[252] = Bool(false);
+    messageBits[253] = Bool(false);
+    messageBits[254] = Bool(false);
+
+    // load message from bits again
+    const message = Field.fromBits(messageBits);
+
+    let txn = await Mina.transaction(eligibleAddressAccount, () => {
+      zkApp.depositMessage(message, addressRecord, witness);
+    })
+
+    await txn.prove();
+    const txnResult = await txn.sign([eligibleAddressKey]).send();
+
+    if (txnResult.isSuccess) {
+      // update record in zkdb.
+      await zkdb.updateByIndex(findRecord.index, new AddressRecord({
+        address: addressRecord.address,
+        message: message
+      }))
+    }
+
+    // fetch zkapp events
+    const events = await zkApp.fetchEvents(UInt32.from(0))
+
+    // check get latest event
+    const event = events[events.length - 1];
+
+    // get number of messages
+    const updatedNumberOfMessages = zkApp.numOfMessages.get();
+
+    expect(event.event.data).toEqual(updatedNumberOfMessages);
+    expect(event.type).toMatch(/new-message/)
+  })
 
   it('should fail when eligible address tries to add more than one message', async () => {
    // get eligible address

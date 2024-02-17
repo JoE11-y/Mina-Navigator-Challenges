@@ -1,4 +1,4 @@
-import { Field, SmartContract, state, State, method, MerkleWitness, Bool, PublicKey, Provable, UInt32 } from 'o1js';
+import { Field, SmartContract, state, State, method, MerkleWitness, Bool, PublicKey, Provable } from 'o1js';
 
 // import { Schema } from 'zkdb';
 
@@ -45,7 +45,7 @@ export class Message extends SmartContract {
   @state(PublicKey) admin = State<PublicKey>();
 
   events = {
-    "new-message": UInt32
+    "new-message": Field
   }
 
   init() {
@@ -135,7 +135,7 @@ export class Message extends SmartContract {
     this.numOfMessages.set(numOfMessages.add(1));
 
     // emit new message event
-    // this.emitEvent('new-message', numOfMessages.add(1));
+    this.emitEvent('new-message', numOfMessages.add(1));
   }
 
   checkFlags(message: Field) {
